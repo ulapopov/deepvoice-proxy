@@ -1,10 +1,15 @@
 import express from "express";
 import cors from "cors";
+import multer from "multer";
+import fs from "fs";
+import axios from "axios";
+import FormData from "form-data";
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "2mb" }));
 
+const upload = multer({ dest: "/tmp/" });
 const PORT = process.env.PORT || 3000;
 
 // ---------- helpers ----------
@@ -15,12 +20,10 @@ function requireEnv(name) {
 }
 
 function toOpenAIMessages(messages = []) {
-  // expect [{role:"user"|"assistant"|"system", content:"..."}]
   return messages.map(m => ({ role: m.role, content: m.content }));
 }
 
 function toAnthropicMessages(messages = []) {
-  // Anthropic expects system separately; messages are user/assistant
   return messages
     .filter(m => m.role !== "system")
     .map(m => ({ role: m.role, content: m.content }));
@@ -71,7 +74,7 @@ app.get("/models", async (req, res) => {
       if (!r.ok) return res.status(r.status).send(await r.text());
       const j = await r.json();
       const models = (j.models || [])
-        .map(m => ({ id: m.name })) // e.g. "models/gemini-1.5-pro"
+        .map(m => ({ id: m.name }))
         .sort((a, b) => a.id.localeCompare(b.id));
       return res.json(models);
     }
@@ -95,8 +98,8 @@ app.post("/chat", async (req, res) => {
         messages: toOpenAIMessages(messages),
       };
       if (!String(model).startsWith("gpt-5")) {
-  	body.temperature = typeof req.body.temperature === "number" ? req.body.temperature : 0.2;
-      }	
+        body.temperature = typeof req.body.temperature === "number" ? req.body.temperature : 0.2;
+      } 
       const r = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -137,10 +140,8 @@ app.post("/chat", async (req, res) => {
 
     if (provider === "gemini") {
       const key = requireEnv("GEMINI_API_KEY");
-      // model should look like "models/gemini-1.5-pro" (from /models)
       const url = `https://generativelanguage.googleapis.com/v1beta/${model}:generateContent?key=${encodeURIComponent(key)}`;
 
-      // Convert chat history to Gemini "contents"
       const contents = (messages || [])
         .filter(m => m.role !== "system")
         .map(m => ({
@@ -162,8 +163,7 @@ app.post("/chat", async (req, res) => {
       });
       if (!r.ok) return res.status(r.status).send(await r.text());
       const j = await r.json();
-      const content =
-        j.candidates?.[0]?.content?.parts?.map(p => p.text).join("") ?? "";
+      const content = j.candidates?.[0]?.content?.parts?.map(p => p.text).join("") ?? "";
       return res.json({ content });
     }
 
@@ -173,9 +173,39 @@ app.post("/chat", async (req, res) => {
   }
 });
 
+// ---------- transcribe ----------
+app.post("/transcribe", upload.single("file"), async (req, res) => {
+  try {
+    const key = requireEnv("OPENAI_API_KEY");
+    const file = req.file;
+    if (!file) return res.status(400).send("No file uploaded");
+
+    const form = new FormData();
+    form.append("file", fs.createReadStream(file.path), {
+      filename: file.originalname,
+      contentType: "audio/m4a",
+    });
+    form.append("model", "whisper-1");
+
+    const response = await axios.post("https://api.openai.com/v1/audio/transcriptions", form, {
+      headers: {
+        ...form.getHeaders(),
+        Authorization: `Bearer ${key}`,
+      },
+    });
+
+    // Cleanup local temp file
+    fs.unlinkSync(file.path);
+
+    res.send(response.data.text);
+  } catch (error) {
+    console.error("Transcription error:", error.response?.data || error.message);
+    res.status(500).send("Transcription failed: " + (error.response?.data?.error?.message || error.message));
+  }
+});
+
 app.get("/health", (_, res) => res.json({ ok: true }));
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`Proxy running on http://0.0.0.0:${PORT}`);
 });
-
