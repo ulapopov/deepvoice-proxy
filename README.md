@@ -1,91 +1,51 @@
-# DeepVoice Proxy
+# DeepVoice Proxy 🚀
 
-A simple proxy server for DeepVoiceChat that handles API calls to OpenAI, Anthropic, and Google Gemini.
+The secure, high-performance bridge for DeepVoiceChat. Handles multi-provider LLM calls and Whisper transcription.
 
-## Quick Deploy to Vercel
+## ⚡ Quick Deploy
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ulapopov/deepvoice-proxy)
 
-## Setup
+---
 
-### 1. Clone and Install
+## 🛠️ Features
 
-```bash
-git clone https://github.com/ulapopov/deepvoice-proxy.git
-cd deepvoice-proxy
-npm install
-```
+- 🔄 **Unified API**: One interface for OpenAI, Anthropic, and Google Gemini.
+- 🎙️ **Whisper Support**: Dedicated `/transcribe` endpoint for high-quality STT.
+- 🛡️ **Secure**: Keeps API keys safe in environment variables, never on the client.
+- ☁️ **Vercel Native**: Optimized for serverless deployment.
 
-### 2. Set Environment Variables
+## ⚙️ Setup
 
-Create a `.env` file (or set in Vercel dashboard):
-
+### 1. Set Environment Variables
+Set these in your Vercel dashboard or a local `.env` file:
 ```env
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
 ```
 
-You only need keys for the providers you want to use.
-
-### 3. Run Locally
-
+### 2. Local Development
 ```bash
+npm install
 npm start
 ```
 
-Server runs on `http://localhost:3000`
+---
 
-### 4. Deploy to Vercel
+## 📡 API Endpoints
 
-```bash
-npm i -g vercel
-vercel
-```
+### 🎤 POST `/transcribe`
+Accepts multipart audio files and returns text via OpenAI Whisper.
 
-Add your API keys in the Vercel dashboard under Settings → Environment Variables.
+### 💬 POST `/chat`
+Standard chat endpoint supporting providers: `openai`, `anthropic`, `gemini`.
 
-## API Endpoints
+### 📋 GET `/models`
+Lists available models for a specific provider.
 
-### GET /models?provider=openai|anthropic|gemini
+## 🏷️ GitHub Topics
+`node.js`, `express`, `proxy`, `openai`, `whisper`, `llm`, `gemini`, `claude`, `vercel`
 
-Returns available models for the provider.
-
-### POST /chat
-
-```json
-{
-  "provider": "openai",
-  "model": "gpt-4o",
-  "messages": [
-    {"role": "user", "content": "Hello!"}
-  ]
-}
-```
-
-Returns:
-```json
-{
-  "content": "Hi there! How can I help you?"
-}
-```
-
-### GET /health
-
-Returns `{"ok": true}`
-
-## Supported Models
-
-- **OpenAI**: GPT-5 family, GPT-4o
-- **Anthropic**: Claude 3.x, Claude 4.x
-- **Gemini**: Gemini 2.x, 2.5, 3.x
-
-## Security Notes
-
-- Never commit `.env` files
-- Use HTTPS in production
-- Consider adding rate limiting for public deployments
-
-## License
-
+## 📄 License
 MIT
