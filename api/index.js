@@ -4,6 +4,8 @@ import multer from "multer";
 import fs from "fs";
 import axios from "axios";
 import FormData from "form-data";
+import { OAuth2Client } from "google-auth-library";
+import { Redis } from "@upstash/redis";
 
 const app = express();
 app.use(cors());
@@ -11,6 +13,20 @@ app.use(express.json({ limit: "2mb" }));
 
 const upload = multer({ dest: "/tmp/" });
 const PORT = process.env.PORT || 3000;
+
+// Upstash Redis init
+let redis;
+try {
+  redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  });
+} catch (e) {
+  console.warn("Redis not configured, rate limiting disabled");
+}
+
+const authClient = new OAuth2Client();
+const DAILY_QUOTA = 50;
 
 // ---------- helpers ----------
 function requireEnv(name) {
@@ -33,8 +49,58 @@ function getSystem(messages = []) {
   return messages.find(m => m.role === "system")?.content || "";
 }
 
+// ---------- auth & rate limit ----------
+async function authenticate(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader?.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing or invalid Authorization header" });
+  }
+
+  const idToken = authHeader.split(" ")[1];
+  try {
+    const clientId = requireEnv("GOOGLE_CLIENT_ID");
+    const ticket = await authClient.verifyIdToken({
+      idToken,
+      audience: clientId,
+    });
+    const payload = ticket.getPayload();
+    req.user = {
+      sub: payload.sub,
+      email: payload.email,
+    };
+    next();
+  } catch (e) {
+    console.error("Auth error:", e.message);
+    return res.status(401).json({ error: "Invalid ID token: " + e.message });
+  }
+}
+
+async function rateLimiter(req, res, next) {
+  if (!redis) return next();
+
+  const userId = req.user.sub;
+  const today = new Date().toISOString().split("T")[0];
+  const userKey = `usage:user:${userId}:${today}`;
+  const totalKey = `usage:total:${today}`;
+
+  try {
+    const count = await redis.incr(userKey);
+    await redis.expire(userKey, 86400);
+    await redis.incr(totalKey);
+    await redis.expire(totalKey, 86400);
+
+    if (count > DAILY_QUOTA) {
+      return res.status(429).json({ error: `Daily quota of ${DAILY_QUOTA} requests exceeded.` });
+    }
+    next();
+  } catch (e) {
+    console.error("Rate limit error:", e.message);
+    next();
+  }
+}
+
 // ---------- models ----------
-app.get("/models", async (req, res) => {
+app.get("/models", authenticate, rateLimiter, async (req, res) => {
   try {
     const provider = (req.query.provider || "").toString();
 
@@ -86,7 +152,7 @@ app.get("/models", async (req, res) => {
 });
 
 // ---------- chat ----------
-app.post("/chat", async (req, res) => {
+app.post("/chat", authenticate, rateLimiter, async (req, res) => {
   try {
     const { provider, model, messages } = req.body || {};
     if (!provider || !model) return res.status(400).json({ error: "provider and model required" });
@@ -174,7 +240,7 @@ app.post("/chat", async (req, res) => {
 });
 
 // ---------- transcribe ----------
-app.post("/transcribe", upload.single("file"), async (req, res) => {
+app.post("/transcribe", authenticate, rateLimiter, upload.single("file"), async (req, res) => {
   try {
     const key = requireEnv("OPENAI_API_KEY");
     const file = req.file;

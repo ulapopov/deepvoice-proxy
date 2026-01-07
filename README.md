@@ -1,6 +1,6 @@
-# DeepVoice Proxy 🚀
+# VoiceBridge Proxy 🚀
 
-The secure, high-performance bridge for DeepVoiceChat. Handles multi-provider LLM calls and Whisper transcription.
+The secure, high-performance bridge for VoiceBridge. Handles multi-provider LLM calls and Whisper transcription.
 
 ## ⚡ Quick Deploy
 
@@ -12,7 +12,8 @@ The secure, high-performance bridge for DeepVoiceChat. Handles multi-provider LL
 
 - 🔄 **Unified API**: One interface for OpenAI, Anthropic, and Google Gemini.
 - 🎙️ **Whisper Support**: Dedicated `/transcribe` endpoint for high-quality STT.
-- 🛡️ **Secure**: Keeps API keys safe in environment variables, never on the client.
+- 🛡️ **Secure**: Google ID Token verification on all endpoints.
+- 📉 **Rate Limited**: Integrated daily quotas via Upstash Redis.
 - ☁️ **Vercel Native**: Optimized for serverless deployment.
 
 ## ⚙️ Setup
@@ -23,6 +24,11 @@ Set these in your Vercel dashboard or a local `.env` file:
 OPENAI_API_KEY=sk-...
 ANTHROPIC_API_KEY=sk-ant-...
 GEMINI_API_KEY=...
+
+# Auth & Rate Limiting
+GOOGLE_CLIENT_ID=...
+UPSTASH_REDIS_REST_URL=...
+UPSTASH_REDIS_REST_TOKEN=...
 ```
 
 ### 2. Local Development
@@ -34,6 +40,9 @@ npm start
 ---
 
 ## 📡 API Endpoints
+
+> [!IMPORTANT]
+> All endpoints require a `Authorization: Bearer <GOOGLE_ID_TOKEN>` header.
 
 ### 🎤 POST `/transcribe`
 Accepts multipart audio files and returns text via OpenAI Whisper.
